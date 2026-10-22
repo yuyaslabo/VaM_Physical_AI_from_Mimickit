@@ -9,7 +9,7 @@ Run physical AI trained with Mimickit inside Virt-A-Mate (VaM) . Interact with t
 
 ## Overview
 
-This project runs the AI inference via **Newton** in the background while running Virt-A-Mate.
+This project runs the AI inference via **Newton** in the background while running Virt-A-Mate. **A pre-trained physical AI model is included in this repository, allowing you to try it out immediately.**
 
 * **Desktop Mode:** Works on a single PC. However, physical interactions inside Virt-A-Mate are not available in this mode.
 * **VR Mode:** Running in VR mode requires heavy computing power. It will likely require a separate dedicated PC with an NVIDIA GPU just to handle the AI inference alongside the VaM PC. *(Note: A single PC setup with an RTX 4070 Ti was insufficient for VR mode during testing).*
