@@ -1,0 +1,2 @@
+python mimickit/run.py --mode test --num_envs 1 --engine_config data/engines/newton_engine.yaml --env_config data/envs/amp_g1_vam_env.yaml --agent_config data/agents/amp_g1_vam_agent.yaml --visualize true --model_file checkpoint/model.pt
+

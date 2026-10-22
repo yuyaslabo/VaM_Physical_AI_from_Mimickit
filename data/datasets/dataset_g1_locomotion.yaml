@@ -1,0 +1,9 @@
+motions:
+  - file: "data/motions/g1/g1_idle_step.pkl"
+    weight: 1.0
+  - file: "data/motions/g1/g1_idle_step_mirror.pkl"
+    weight: 1.0
+  - file: "data/motions/g1/g1_idle_step2.pkl"
+    weight: 1.0
+  - file: "data/motions/g1/g1_idle_step2_mirror.pkl"
+    weight: 1.0
