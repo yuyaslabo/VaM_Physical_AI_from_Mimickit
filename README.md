@@ -35,18 +35,18 @@ The data flows in a loop via UDP:
 
 ## Setup Instructions
 
-1. Install **Newton**: [Insert repository link here]
-2. Install **Mimickit**: [Insert repository link here]
-3. Follow the official Mimickit instructions to ensure it runs correctly on your system.
-4. Download the latest `.zip` release from the **Releases** section of this repository and extract it.
-5. Copy the contents of the extracted `MimicKit` folder into your main Mimickit installation directory. 
+1. Install **Mimickit**: [https://github.com/xbpeng/MimicKit] (Please make sure to select and configure **Newton** as the simulator backend during the installation process).
+2. Follow the official Mimickit instructions to ensure it runs correctly on your system.
+3. Download the latest `.zip` release from the **Releases** section of this repository and extract it.
+4. Copy the contents of the extracted `MimicKit` folder into your main Mimickit installation directory. 
    * ⚠️ **Important:** This will overwrite files inside `MimicKit/mimickit/envs`. Make sure to **back up the original files** before overwriting.
-6. Run the following command based on `Start_command.txt`:
+5. Run the following command based on `Start_command.txt`:
    ```bash
    python mimickit/run.py --mode test --num_envs 1 --engine_config data/engines/newton_engine.yaml --env_config data/envs/amp_g1_vam_env.yaml --agent_config data/agents/amp_g1_vam_agent.yaml --visualize true --model_file checkpoint/model.pt
    ```
-7. In Virt-A-Mate, load `MimickitReceiver.cs` as a **Person plugin** and `VRhand_Mimickit2.cs` as a **Scene plugin**.
-8. **Done!** The AI will start moving, and you can now interact with it using your hands.
+6. In Virt-A-Mate, load `MimickitReceiver.cs` as a **Person plugin** and `VRhand_Mimickit2.cs` as a **Scene plugin**.
+7. **Done!** The AI will start moving, and you can now interact with it using your hands.
+
 
 ---
 
