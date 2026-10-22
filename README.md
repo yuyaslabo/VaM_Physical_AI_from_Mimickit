@@ -1,11 +1,7 @@
 # VaM_Physical_AI_from_Mimickit
 Run physical AI trained with Mimickit inside Virt-A-Mate (VaM) . Interact with the AI via VR controllers. (push and grab)
 
-# Physical AI from Mimickit (Virt-A-Mate Integration)
-
 ⚠️ **Disclaimer:** This is an unofficial community project. It is not affiliated with, associated with, or endorsed by Mimickit or MeshedVR.
-
-Experience physical AI trained with **Mimickit** directly inside **Virt-A-Mate (VaM) VR mode**. You can interact with the AI by pushing and grabbing it using your VR controllers.
 
 📺 **DEMO:** [Insert your video link here]
 
