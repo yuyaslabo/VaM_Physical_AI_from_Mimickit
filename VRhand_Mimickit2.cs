@@ -24,6 +24,8 @@ public class VRHandUDPSender : MVRScript
 
     private const float SEND_INTERVAL = 1f / 30f;
     private float timer = 0f;
+	
+	private int logCounter = 0;
 
     public override void Init()
     {
@@ -130,13 +132,22 @@ public class VRHandUDPSender : MVRScript
 
         Transform leftHand = SuperController.singleton.leftHand;
         Transform rightHand = SuperController.singleton.rightHand;
+		Transform hmdTransform = SuperController.singleton.centerCameraTarget.transform;
 
-        if (leftHand == null || rightHand == null) return;
+        if (leftHand == null || rightHand == null || hmdTransform == null) return;
 
         float leftTrigger = SuperController.singleton.GetLeftGrabVal();
         float rightTrigger = SuperController.singleton.GetRightGrabVal();
+		
+		/* logCounter++;
+        if (logCounter >= 30)
+        {
+            Vector3 hmdPos = hmdTransform.position;
+            SuperController.LogMessage($"[UDP Debug] HMD Pos: ({hmdPos.x:F2}, {hmdPos.y:F2}, {hmdPos.z:F2}) | L-Trig: {leftTrigger:F2} | R-Trig: {rightTrigger:F2}");
+            logCounter = 0;
+        } */
 
-        byte[] payload = new byte[16 * 4];
+        byte[] payload = new byte[23 * 4];
         int offset = 0;
 
         WriteHandData(payload, ref offset, leftHand);
@@ -144,6 +155,8 @@ public class VRHandUDPSender : MVRScript
 
         WriteHandData(payload, ref offset, rightHand);
         CopyFloatToBuffer(payload, ref offset, rightTrigger);
+		
+		WriteHandData(payload, ref offset, hmdTransform);
 
         try
         {
@@ -160,7 +173,7 @@ public class VRHandUDPSender : MVRScript
         Quaternion quat = hand.rotation;
 
         float posX = pos.x;
-        float posY = pos.y + 0.14f; 
+        float posY = pos.y + 0.2f; 
         float posZ = pos.z;
 
         float qX = quat.x;
