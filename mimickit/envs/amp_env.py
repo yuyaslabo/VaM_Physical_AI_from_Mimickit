@@ -1073,7 +1073,7 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
             pelvis_local_offset = R.from_euler('x', offset_pelvis_angle_deg, degrees=True)
             pelvis_q = pelvis_q * pelvis_local_offset
             
-            offset_head_angle_deg = 10.0 
+            offset_head_angle_deg = 3.0 
             
             # 首ローカルのX軸回転クォータニオンを作成
             head_local_offset = R.from_euler('x', offset_head_angle_deg, degrees=True)
