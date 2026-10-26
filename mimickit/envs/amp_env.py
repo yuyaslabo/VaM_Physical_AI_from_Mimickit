@@ -41,7 +41,7 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
         self._vrhand_enabled = bool(env_config.get("vrhand_udp_enabled", visualize))
         self._vrhand_ip = env_config.get("vrhand_udp_ip", "0.0.0.0")
         self._vrhand_port = int(env_config.get("vrhand_udp_port", 9999))
-        self._vrhand_packet = struct.Struct("<16f")
+        self._vrhand_packet = struct.Struct("<23f")
         # VRhand offset is independent of the existing VaM retarget correction.
         self._vrhand_position_offset = np.asarray(
             env_config.get("vrhand_position_offset", [0.0, 0.15, 0.0]), dtype=np.float64
@@ -55,8 +55,11 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
         self._vrhand_box_ids = []
         self._vrhand_latest = None
         self._vrhand_asset = os.path.join("data", "assets", "objects", "vrhand_collision_box.xml")
+        self._vrhmd_asset = os.path.join("data", "assets", "objects", "vrhmd_collision_box.xml")
         if self._vrhand_enabled:
             self._write_vrhand_asset()
+            self._write_vrhmd_asset()
+            
             self._vrhand_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self._vrhand_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self._vrhand_socket.bind((self._vrhand_ip, self._vrhand_port))
@@ -71,44 +74,7 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
         self._vam_packet = struct.Struct("<133f")
         self._vam_position_offset = np.asarray(env_config.get("vam_position_offset", [0.0, 0.06, 0.0]), dtype=np.float32)
         self._vam_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) if self._vam_enabled else None
-        # self._vam_body_aliases = {
-            # "pelvis": ("pelvis", "root"),
-            # "torso": ("torso", "torso_link", "waist", "upper_body"),
-            # "head": ("head", "head_link"),
-            # "right_thigh": ("right_thigh", "right_hip", "hip_r", "right_hip_pitch"),
-            # "right_shin": ("right_shin", "right_knee", "knee_r", "right_knee_link"),
-            # "right_foot": ("right_foot", "right_ankle", "ankle_r", "right_foot_link"),
-            # "left_thigh": ("left_thigh", "left_hip", "hip_l", "left_hip_pitch"),
-            # "left_shin": ("left_shin", "left_knee", "knee_l", "left_knee_link"),
-            # "left_foot": ("left_foot", "left_ankle", "ankle_l", "left_foot_link"),
-            # "right_upper_arm": ("right_upper_arm", "right_shoulder", "shoulder_r", "right_shoulder_link"),
-            # "right_lower_arm": ("right_lower_arm", "right_elbow", "elbow_r", "right_elbow_link"),
-            # "left_upper_arm": ("left_upper_arm", "left_shoulder", "shoulder_l", "left_shoulder_link"),
-            # "left_lower_arm": ("left_lower_arm", "left_elbow", "elbow_l", "left_elbow_link"),
-        # }
-        #self._vam_body_names = self._vam_find_body_names()
-        #self._vam_body_indices = env_config.get("vam_body_indices", {})
-        # self._vam_body_names = {
-            # "abdomen2control": 0,
-            # "chestcontrol": 1,
-            # "headcontrol": 2,
-            # "rhandcontrol": 3,
-            # "lhandcontrol": 4,
-            # "rfootcontrol": 5,
-            # "lfootcontrol": 6,
-            # "relbowcontrol": 7,
-            # "lelbowcontrol": 8,
-            # "rkneecontrol": 9,   # もしVaM側が "rshincontrol" の場合は要変更
-            # "lkneecontrol": 10,  # もしVaM側が "lshincontrol" の場合は要変更
-            # "rarmcontrol": 11,
-            # "larmcontrol": 12,
-            # "rthighcontrol": 13,
-            # "lthighcontrol": 14,
-            # "rshouldercontrol": 15,
-            # "lshouldercontrol": 16,
-            # "rtoecontrol": 17,
-            # "ltoecontrol": 18
-        # }
+
         return
 
     def _build_envs(self, config, num_envs):
@@ -137,12 +103,17 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
                 asset_file=self._vrhand_asset, name="vrhand_right_collision_box",
                 is_visual=False, fix_root=False, color=[1.0, 0.4, 0.2] # False に変更
             )
+            hmd_id = self._engine.create_obj(
+                env_id=env_id, obj_type=engine.ObjType.rigid,
+                asset_file=self._vrhmd_asset, name="vrhmd_collision_box",
+                is_visual=False, fix_root=False, color=[0.4, 1.0, 0.2] # False に変更
+            )
             if env_id == 0:
-                self._vrhand_box_ids = [left_id, right_id]
+                self._vrhand_box_ids = [left_id, right_id, hmd_id]
                 if self._vrhand_debug:
-                    print(f"[VRhand] collision boxes created: left_id={left_id}, right_id={right_id}, env_id={env_id}, asset={self._vrhand_asset}", flush=True)
+                    print(f"[VRhand] collision boxes created: left_id={left_id}, right_id={right_id}, hmd_id={hmd_id} env_id={env_id}, asset={self._vrhand_asset}", flush=True)
             else:
-                assert self._vrhand_box_ids == [left_id, right_id]
+                assert self._vrhand_box_ids == [left_id, right_id, hmd_id]
         return
 
     # def _build_marker(self, env_id):
@@ -169,7 +140,7 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
     def _build_sim_tensors(self, config):
         super()._build_sim_tensors(config)
         
-        if self._vrhand_enabled and len(self._vrhand_box_ids) == 2:
+        if self._vrhand_enabled and len(self._vrhand_box_ids) == 3:
             num_envs = self.get_num_envs()
             env_ids = torch.arange(num_envs, device=self._device, dtype=torch.long)
             
@@ -183,8 +154,12 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
             right_parked_pos[:, 0] = 2.0
             right_parked_pos[:, 2] = 10.0
             
+            hmd_parked_pos = torch.zeros((num_envs, 3), device=self._device, dtype=torch.float32)
+            hmd_parked_pos[:, 1] = 2.0
+            hmd_parked_pos[:, 2] = 10.0
+            
             # それぞれ別の座標に配置
-            left_id, right_id = self._vrhand_box_ids[0], self._vrhand_box_ids[1]
+            left_id, right_id, hmd_id = self._vrhand_box_ids[0], self._vrhand_box_ids[1], self._vrhand_box_ids[2]
             
             self._engine.set_root_pos(env_ids, left_id, left_parked_pos)
             self._engine.set_root_vel(env_ids, left_id, 0.0)
@@ -193,6 +168,10 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
             self._engine.set_root_pos(env_ids, right_id, right_parked_pos)
             self._engine.set_root_vel(env_ids, right_id, 0.0)
             self._engine.set_root_ang_vel(env_ids, right_id, 0.0)
+            
+            self._engine.set_root_pos(env_ids, hmd_id, hmd_parked_pos)
+            self._engine.set_root_vel(env_ids, hmd_id, 0.0)
+            self._engine.set_root_ang_vel(env_ids, hmd_id, 0.0)
             
             
             
@@ -413,7 +392,7 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
   <worldbody>
     <body name="vrhand_collision_box" pos="10 10 10">
       <freejoint name="root"/>                        
-      <geom name="vrhand_box_geom" type="sphere" size="0.025"
+      <geom name="vrhand_box_geom" type="sphere" size="0.015"
             rgba="0.2 0.65 1.0 0.65"
             mass="70.0"
             solref="0.15 1.6" solimp="0.5 0.99 0.01 0.5 2"/>
@@ -422,6 +401,24 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
 </mujoco>
 """
         with open(self._vrhand_asset, "w", encoding="utf-8") as f:
+            f.write(xml)
+            
+    def _write_vrhmd_asset(self):
+        os.makedirs(os.path.dirname(self._vrhmd_asset), exist_ok=True)
+        xml = """<mujoco model="vrhmd_collision_box">
+  <worldbody>
+    <body name="vrhmd_collision_box" pos="10 10 10">
+      <freejoint name="root"/>                        
+      <geom name="vrhmd_box_geom" type="capsule" size="0.06 0.2" pos="0 0 0.2"
+            rgba="0.2 0.65 1.0 0.65"
+            mass="10.0"
+            solref="0.15 1.6" solimp="0.5 0.99 0.01 0.5 2"/>
+      
+    </body>
+  </worldbody>
+</mujoco>
+"""
+        with open(self._vrhmd_asset, "w", encoding="utf-8") as f:
             f.write(xml)
             
     def _vam_pos_to_engine(self, pos_vam):
@@ -435,22 +432,22 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
         if not np.isfinite(q).all() or norm < 1e-8:
             return np.asarray([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
         return (q / norm).astype(np.float32)
-            
+        
     def _update_vrhand_boxes(self):
         if not self._vrhand_enabled or self._vrhand_socket is None:
             return
-        if len(self._vrhand_box_ids) != 2:
+        # 💡 self._vrhand_box_ids を [左手ID, 右手ID, HMD_ID] の3つの要素にしてください
+        if len(self._vrhand_box_ids) != 3:
             return
 
         if not hasattr(self, '_prev_vrhand_pos'):
             self._prev_vrhand_pos = {}
-            # トリガー状態と現在掴んでいる対象を初期化
             self._vrhand_triggers = {"left": 0.0, "right": 0.0}
             self._vrhand_grabbed_targets = {"left": None, "right": None}
 
-        # 💡 パケットサイズを 64 バイト（float 16個分）に変更
-        # structのフォーマットが '14f' だった場合は '16f' に書き換えておいてください
-        EXPECTED_SIZE = 64 
+        # 💡 パケットサイズを 92 バイト（float 23個分：左8 + 右8 + HMD7）に変更
+        # ※ self._vrhand_packet（struct）のフォーマットも '23f' に書き換えてください
+        EXPECTED_SIZE = 92 
 
         latest_packet = None
         while True:
@@ -461,40 +458,77 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
             if len(packet) == EXPECTED_SIZE:
                 latest_packet = packet
                 self._vrhand_packet_count += 1
+            else:
+                # 💡 想定外のサイズが来ている場合の警告デバッグ
+                print(f"[VRHand Debug] Warning: Received invalid packet size: {len(packet)} bytes (Expected: {EXPECTED_SIZE})")
 
         if latest_packet is not None:
-            # 16個のfloatを展開
+            # 23個のfloatを展開
             self._vrhand_latest = self._vrhand_packet.unpack(latest_packet)
             
-            # 🟢 トリガー値を取得 (data[7]が左、data[15]が右)
+            # トリガー値を取得 (左: 7, 右: 15)
             self._vrhand_triggers["left"] = float(self._vrhand_latest[7])
             self._vrhand_triggers["right"] = float(self._vrhand_latest[15])
 
         if self._vrhand_latest is None:
             return
 
+        # # 💡 --- HMD同期＆データ検証用デバッグ出力 (約1秒=30回に1回出力) ---
+        # if self._vrhand_update_count % 30 == 0:
+            # print(f"\n================ [VRHand Update Debug #{self._vrhand_update_count}] ================")
+            # print(f"Total Floats Unpacked: {len(self._vrhand_latest)}")
+            # print(f"Triggers -> Left: {self._vrhand_triggers['left']:.2f} | Right: {self._vrhand_triggers['right']:.2f}")
+            
+            # names = ["Left Hand", "Right Hand", "HMD"]
+            # offsets = [0, 8, 16]
+            # for name, offset in zip(names, offsets):
+                # raw_pos = self._vrhand_latest[offset:offset+3]
+                # raw_quat = self._vrhand_latest[offset+3:offset+7]
+                # print(f"[{name}] Raw UDP Pos: {raw_pos} | Quat: {raw_quat}")
+            # print("========================================================================\n")
+        # # ------------------------------------------------------------------
+
         env_ids = torch.tensor([0], device=self._device, dtype=torch.long)
         dt = 1.0 / 30.0
         gravity = 9.81
 
-        # ループ時のオフセットを 7 から 8（1手あたり8要素：pos(3) + quat(4) + trigger(1)）に変更
-        for hand_name, offset, obj_id in (("left", 0, self._vrhand_box_ids[0]), ("right", 8, self._vrhand_box_ids[1])):
+        # 各データのオフセットと、対応するオブジェクトIDのペア
+        # 左手(0番目から7個+トリガー1), 右手(8番目から7個+トリガー1), HMD(16番目から7個)
+        targets = (
+            (0, self._vrhand_box_ids[0]), # 左手
+            (8, self._vrhand_box_ids[1]), # 右手
+            (16, self._vrhand_box_ids[2]) # HMD
+        )
+
+        for offset, obj_id in targets:
             values = self._vrhand_latest
             pos_vam = np.asarray(values[offset:offset + 3], dtype=np.float64)
-            quat_vam = np.asarray(values[offset + 3:offset + 7], dtype=np.float64)
+            #quat_vam = np.asarray(values[offset + 3:offset + 7], dtype=np.float64)
+            quat_vam = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+            
             
             if not np.isfinite(pos_vam).all() or not np.isfinite(quat_vam).all() or np.linalg.norm(quat_vam) < 1e-8:
+                # 💡 データが不正でスキップされた場合のデバッグログ
+                if self._vrhand_update_count % 30 == 0:
+                    target_name = "LeftHand" if offset == 0 else "RightHand" if offset == 8 else "HMD"
+                    print(f"[VRHand Debug] {target_name} skipped due to invalid data (Finite: {np.isfinite(pos_vam).all()}, Norm: {np.linalg.norm(quat_vam)})")
                 continue
             
             pos_np = self._vam_pos_to_engine(pos_vam)
             quat_np = self._vam_quat_to_engine(quat_vam)
             
+            # 手・HMD共通でZ軸（奥行き）のスケール補正を適用
             pos_np[2] *= 0.85  # [0]=X, [1]=Y(高さ), [2]=Z
             
+            # # 💡 変換後の最終座標の確認用デバッグ
+            # if self._vrhand_update_count % 30 == 0:
+                # target_name = "LeftHand" if offset == 0 else "RightHand" if offset == 8 else "HMD"
+                # print(f"[VRHand Debug] {target_name} -> Final Engine Pos: {pos_np}")
+
             pos = torch.as_tensor(pos_np, device=self._device, dtype=torch.float32).reshape(1, 3)
             quat = torch.as_tensor(quat_np, device=self._device, dtype=torch.float32)
 
-            # 速度計算（Dynamicオブジェクト用）
+            # 速度計算
             if obj_id in self._prev_vrhand_pos:
                 prev_pos = self._prev_vrhand_pos[obj_id]
                 vel = (pos - prev_pos) / dt
@@ -508,7 +542,7 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
 
             self._prev_vrhand_pos[obj_id] = pos
 
-            # 重力沈み込み防止補正を入れて同期
+            # 重力沈み込み防止補正
             compensated_pos = pos.clone()
             compensated_pos[:, 2] += 0.5 * gravity * (dt ** 2)
 
@@ -517,11 +551,101 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
             self._engine.set_root_vel(env_ids, obj_id, vel)
             self._engine.set_root_ang_vel(env_ids, obj_id, torch.zeros((1, 3), device=self._device))
 
-        # 🟢 ドラッグ＆ドロップ（引っ張る力）の物理適用関数を呼び出す
+        # ドラッグ＆ドロップ物理の適用
         self._apply_vrhand_drag(env_ids)
         
         self._vrhand_update_count += 1
         return
+
+
+
+            
+    # def _update_vrhand_boxes(self):
+        # if not self._vrhand_enabled or self._vrhand_socket is None:
+            # return
+        # if len(self._vrhand_box_ids) != 2:
+            # return
+
+        # if not hasattr(self, '_prev_vrhand_pos'):
+            # self._prev_vrhand_pos = {}
+            # # トリガー状態と現在掴んでいる対象を初期化
+            # self._vrhand_triggers = {"left": 0.0, "right": 0.0}
+            # self._vrhand_grabbed_targets = {"left": None, "right": None}
+
+        # # 💡 パケットサイズを 64 バイト（float 16個分）に変更
+        # # structのフォーマットが '14f' だった場合は '16f' に書き換えておいてください
+        # EXPECTED_SIZE = 64 
+
+        # latest_packet = None
+        # while True:
+            # try:
+                # packet, addr = self._vrhand_socket.recvfrom(1024)
+            # except BlockingIOError:
+                # break
+            # if len(packet) == EXPECTED_SIZE:
+                # latest_packet = packet
+                # self._vrhand_packet_count += 1
+
+        # if latest_packet is not None:
+            # # 16個のfloatを展開
+            # self._vrhand_latest = self._vrhand_packet.unpack(latest_packet)
+            
+            # # 🟢 トリガー値を取得 (data[7]が左、data[15]が右)
+            # self._vrhand_triggers["left"] = float(self._vrhand_latest[7])
+            # self._vrhand_triggers["right"] = float(self._vrhand_latest[15])
+
+        # if self._vrhand_latest is None:
+            # return
+
+        # env_ids = torch.tensor([0], device=self._device, dtype=torch.long)
+        # dt = 1.0 / 30.0
+        # gravity = 9.81
+
+        # # ループ時のオフセットを 7 から 8（1手あたり8要素：pos(3) + quat(4) + trigger(1)）に変更
+        # for hand_name, offset, obj_id in (("left", 0, self._vrhand_box_ids[0]), ("right", 8, self._vrhand_box_ids[1])):
+            # values = self._vrhand_latest
+            # pos_vam = np.asarray(values[offset:offset + 3], dtype=np.float64)
+            # quat_vam = np.asarray(values[offset + 3:offset + 7], dtype=np.float64)
+            
+            # if not np.isfinite(pos_vam).all() or not np.isfinite(quat_vam).all() or np.linalg.norm(quat_vam) < 1e-8:
+                # continue
+            
+            # pos_np = self._vam_pos_to_engine(pos_vam)
+            # quat_np = self._vam_quat_to_engine(quat_vam)
+            
+            # pos_np[2] *= 0.85  # [0]=X, [1]=Y(高さ), [2]=Z
+            
+            # pos = torch.as_tensor(pos_np, device=self._device, dtype=torch.float32).reshape(1, 3)
+            # quat = torch.as_tensor(quat_np, device=self._device, dtype=torch.float32)
+
+            # # 速度計算（Dynamicオブジェクト用）
+            # if obj_id in self._prev_vrhand_pos:
+                # prev_pos = self._prev_vrhand_pos[obj_id]
+                # vel = (pos - prev_pos) / dt
+                # speed = torch.norm(vel)
+                # if speed < 0.03:
+                    # vel = torch.zeros_like(vel)
+                # elif speed > 3.0:
+                    # vel = (vel / speed) * 3.0
+            # else:
+                # vel = torch.zeros((1, 3), device=self._device, dtype=torch.float32)
+
+            # self._prev_vrhand_pos[obj_id] = pos
+
+            # # 重力沈み込み防止補正を入れて同期
+            # compensated_pos = pos.clone()
+            # compensated_pos[:, 2] += 0.5 * gravity * (dt ** 2)
+
+            # self._engine.set_root_pos(env_ids, obj_id, compensated_pos)
+            # self._engine.set_root_rot(env_ids, obj_id, quat)
+            # self._engine.set_root_vel(env_ids, obj_id, vel)
+            # self._engine.set_root_ang_vel(env_ids, obj_id, torch.zeros((1, 3), device=self._device))
+
+        # # 🟢 ドラッグ＆ドロップ（引っ張る力）の物理適用関数を呼び出す
+        # self._apply_vrhand_drag(env_ids)
+        
+        # self._vrhand_update_count += 1
+        # return
         
 
         
@@ -867,7 +991,6 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
             # 🟢 【STEP 1: 骨盤回転を考慮したローカル空間での足伸ばし】
             extended_positions = {}
             leg_scale = 1.32  # 足伸ばし倍率
-            horizontal_scale = 0.8  # 🟢 水平方向（VaM XZ平面 / Newton XY平面）の係数
 
             # 引き伸ばす前の「最も低い足（床に接している部分）」のY座標（高さ）を記録しておく
             original_lowest_y = 999.0
@@ -924,6 +1047,10 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
             torso_p,  torso_q  = final_positions["torso"],  raw_spatial_data["torso"]["rot"]
             head_p,   head_q   = final_positions["head"],   raw_spatial_data["head"]["rot"]
             
+            # 💡 角度を設定（例：+2度。下を向くか上を向くかはVaMのボーン仕様によります）
+            # 数値をマイナス（-2.0など）にすれば逆方向に回転します
+            
+            
             rhand_p,  rhand_q  = final_positions["rhand"],  raw_spatial_data["rhand"]["rot"]
             lhand_p,  lhand_q  = final_positions["lhand"],  raw_spatial_data["lhand"]["rot"]
             
@@ -941,6 +1068,18 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
             
             rthigh_p, rthigh_q = final_positions["rthigh"], raw_spatial_data["rthigh"]["rot"]
             lthigh_p, lthigh_q = final_positions["lthigh"], raw_spatial_data["lthigh"]["rot"]
+            
+            offset_pelvis_angle_deg = -90.0 
+            pelvis_local_offset = R.from_euler('x', offset_pelvis_angle_deg, degrees=True)
+            pelvis_q = pelvis_q * pelvis_local_offset
+            
+            offset_head_angle_deg = 10.0 
+            
+            # 首ローカルのX軸回転クォータニオンを作成
+            head_local_offset = R.from_euler('x', offset_head_angle_deg, degrees=True)
+            
+            # 💡 現在の首の世界回転(head_q)に対して、ローカル基準で回転を掛け合わせる（右から掛ける）
+            head_q = head_q * head_local_offset
 
             # 5. VaMの133fパケット仕様（全19個のコントロールポイント）に完全に一致させる
             points_config = [
