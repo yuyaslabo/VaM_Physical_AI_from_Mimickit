@@ -21,7 +21,7 @@ key_bodies: ["left_ankle_roll_link", "right_ankle_roll_link", "head_link", "left
 contact_bodies: ["left_knee_link", "left_ankle_pitch_link", "left_ankle_roll_link", "right_knee_link", "right_ankle_pitch_link", "right_ankle_roll_link"]
 #contact_bodies: ["left_knee_link", "left_ankle_pitch_link", "left_ankle_roll_link", "right_knee_link", "right_ankle_pitch_link", "right_ankle_roll_link", "left_elbow_link", "left_wrist_roll_link", "left_wrist_pitch_link", "left_wrist_yaw_link", "right_elbow_link", "right_wrist_roll_link", "right_wrist_pitch_link", "right_wrist_yaw_link"] # cartwheel
 
-motion_file: "data/datasets/dataset_g1_locomotion.yaml"
+motion_file: "data/datasets/dataset_g1_locomotion_vam.yaml"
 
 reward_pose_w: 0.5
 reward_vel_w: 0.1
@@ -36,14 +36,14 @@ reward_root_vel_scale: 1.0
 reward_key_pos_scale: 10.0
 
 tar_speed: 1.0
-tar_change_time_min: 999.0
-tar_change_time_max: 9999.0
+tar_change_time_min: 1.0
+tar_change_time_max: 1.0
 tar_dist_min: 0.0             
 tar_dist_max: 0.0
 
 proj_target_body: "pelvis"
 
-vam_udp_ip: "127.0.0.0"
+vam_udp_ip: "127.0.0.1"
 vam_udp_port: 9998
 
 vrhand_udp_port: 9999

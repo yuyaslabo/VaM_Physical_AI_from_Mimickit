@@ -140,22 +140,52 @@ class TaskLocationEnv(amp_env.AMPEnv):
         if (self._visualize):
             self._update_marker(env_ids)
         return
-    
+        
     def _reset_tar(self, env_ids):
-        char_id = self._get_char_id()
-        root_pos = self._engine.get_root_pos(char_id)
 
-        char_root_pos = root_pos[env_ids, 0:2]
 
-        rand_dist = (self._tar_dist_max - self._tar_dist_min) * torch.rand_like(char_root_pos[..., 0]) + self._tar_dist_min
-        rand_theta = 2 * np.pi * torch.rand_like(char_root_pos[..., 0])
-        #rand_pos = char_root_pos.clone()
-        rand_pos = torch.zeros_like(char_root_pos)
-        rand_pos[..., 0] += rand_dist * torch.cos(rand_theta)
-        rand_pos[..., 1] += rand_dist * torch.sin(rand_theta)
+        # 1. HMDの位置とクォータニオンを取得 (1次元テンソルとして扱う)
+        hmd_pos = self._latest_hmd_pos.squeeze()   # [x, y, z]
+        hmd_quat = self._latest_hmd_quat.squeeze() # [x, y, z, w] -> 現在 [0, 0, z, w] の状態
 
-        self._tar_pos[env_ids, 0:2] = rand_pos
+        # 2. クォータニオンから水平な前方ベクトル（XY平面）を計算
+        z, w = hmd_quat[2], hmd_quat[3]
+
+        # 💡 [重要修正] [0, 0, z, w] のクォータニオンから正しく水平前方を取り出す数式に変更
+        # 通常の回転行列から、Z軸回転のみが残った際の前方ベクトルを計算します
+        # ※ 環境の基準方向（前）がX軸かY軸かによって符号や入れ替えが必要になる場合があります
+        forward_x = 1.0 - 2.0 * (z ** 2)
+        forward_y = 2.0 * w * z
+
+        forward_dir_2d = torch.stack([forward_x, forward_y]) # [x, y]
+        
+        # 水平ベクトルの長さを計算して正規化
+        norm = torch.norm(forward_dir_2d)
+        if norm > 1e-6:
+            forward_dir_2d = forward_dir_2d / norm
+
+        # 3. HMDの水平位置（XY）から、その前方へ 50cm (0.5m) 進めた位置を計算
+        distance = 0.5  # 50センチ
+        target_pos_2d = hmd_pos[0:2] + forward_dir_2d * distance
+
+        # 4. 指定された env_ids の XY座標（0:2）に代入
+        self._tar_pos[env_ids, 0:2] = target_pos_2d
         return
+    # def _reset_tar(self, env_ids):
+        # char_id = self._get_char_id()
+        # root_pos = self._engine.get_root_pos(char_id)
+
+        # char_root_pos = root_pos[env_ids, 0:2]
+
+        # rand_dist = (self._tar_dist_max - self._tar_dist_min) * torch.rand_like(char_root_pos[..., 0]) + self._tar_dist_min
+        # rand_theta = 2 * np.pi * torch.rand_like(char_root_pos[..., 0])
+        # #rand_pos = char_root_pos.clone()
+        # rand_pos = torch.zeros_like(char_root_pos)
+        # rand_pos[..., 0] += rand_dist * torch.cos(rand_theta)
+        # rand_pos[..., 1] += rand_dist * torch.sin(rand_theta)
+
+        # self._tar_pos[env_ids, 0:2] = rand_pos
+        # return
 
     def _compute_obs(self, env_ids=None):
         obs = super()._compute_obs(env_ids)

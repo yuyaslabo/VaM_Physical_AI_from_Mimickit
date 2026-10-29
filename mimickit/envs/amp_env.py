@@ -74,7 +74,8 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
         self._vam_packet = struct.Struct("<133f")
         self._vam_position_offset = np.asarray(env_config.get("vam_position_offset", [0.0, 0.06, 0.0]), dtype=np.float32)
         self._vam_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) if self._vam_enabled else None
-
+        self._latest_hmd_pos = torch.zeros((1, 3), device=self._device)
+        self._latest_hmd_quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self._device) # [x, y, z, w]
         return
 
     def _build_envs(self, config, num_envs):
@@ -364,35 +365,14 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
 
         return
 
-    def _reset_location_task(self, env_ids):
-        self._reset_location_target(env_ids)
-        rand_dt = torch.rand(env_ids.shape[0], device=self._device, dtype=torch.float)
-        rand_dt = (self._tar_change_time_max - self._tar_change_time_min) * rand_dt + self._tar_change_time_min
-        self._tar_change_times[env_ids] = self._time_buf[env_ids] + rand_dt
-        if self._visualize:
-            self._update_marker(env_ids)
-        return
 
-    def _reset_location_target(self, env_ids):
-        char_id = self._get_char_id()
-        root_pos = self._engine.get_root_pos(char_id)
-        char_root_pos = root_pos[env_ids, 0:2]
-        rand_dist = (self._tar_dist_max - self._tar_dist_min) * torch.rand_like(char_root_pos[..., 0]) + self._tar_dist_min
-        rand_theta = 2 * np.pi * torch.rand_like(char_root_pos[..., 0])
-        rand_pos = char_root_pos.clone()
-        rand_pos[..., 0] += rand_dist * torch.cos(rand_theta)
-        rand_pos[..., 1] += rand_dist * torch.sin(rand_theta)
-        self._tar_pos[env_ids, 0:2] = rand_pos
-        self._tar_pos[env_ids, 2] = 0.0
-        return
-        
     def _write_vrhand_asset(self):
         os.makedirs(os.path.dirname(self._vrhand_asset), exist_ok=True)
         xml = """<mujoco model="vrhand_collision_box">
   <worldbody>
     <body name="vrhand_collision_box" pos="10 10 10">
       <freejoint name="root"/>                        
-      <geom name="vrhand_box_geom" type="sphere" size="0.015"
+      <geom name="vrhand_box_geom" type="sphere" size="0.008"
             rgba="0.2 0.65 1.0 0.65"
             mass="70.0"
             solref="0.15 1.6" solimp="0.5 0.99 0.01 0.5 2"/>
@@ -409,7 +389,7 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
   <worldbody>
     <body name="vrhmd_collision_box" pos="10 10 10">
       <freejoint name="root"/>                        
-      <geom name="vrhmd_box_geom" type="capsule" size="0.06 0.2" pos="0 0 0.2"
+      <geom name="vrhmd_box_geom" type="capsule" size="0.06 0.2" pos="0 0 -0.2"
             rgba="0.2 0.65 1.0 0.65"
             mass="10.0"
             solref="0.15 1.6" solimp="0.5 0.99 0.01 0.5 2"/>
@@ -474,7 +454,7 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
             return
 
         # # 💡 --- HMD同期＆データ検証用デバッグ出力 (約1秒=30回に1回出力) ---
-        # if self._vrhand_update_count % 30 == 0:
+        # if self._vrhand_update_count % 15 == 0:
             # print(f"\n================ [VRHand Update Debug #{self._vrhand_update_count}] ================")
             # print(f"Total Floats Unpacked: {len(self._vrhand_latest)}")
             # print(f"Triggers -> Left: {self._vrhand_triggers['left']:.2f} | Right: {self._vrhand_triggers['right']:.2f}")
@@ -503,8 +483,8 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
         for offset, obj_id in targets:
             values = self._vrhand_latest
             pos_vam = np.asarray(values[offset:offset + 3], dtype=np.float64)
-            #quat_vam = np.asarray(values[offset + 3:offset + 7], dtype=np.float64)
-            quat_vam = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+            quat_vam = np.asarray(values[offset + 3:offset + 7], dtype=np.float64)
+            #quat_vam = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
             
             
             if not np.isfinite(pos_vam).all() or not np.isfinite(quat_vam).all() or np.linalg.norm(quat_vam) < 1e-8:
@@ -526,8 +506,27 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
                 # print(f"[VRHand Debug] {target_name} -> Final Engine Pos: {pos_np}")
 
             pos = torch.as_tensor(pos_np, device=self._device, dtype=torch.float32).reshape(1, 3)
-            quat = torch.as_tensor(quat_np, device=self._device, dtype=torch.float32)
-
+            raw_quat = torch.as_tensor(quat_np, device=self._device, dtype=torch.float32)
+            quat = torch.zeros(4, device=self._device, dtype=torch.float32)
+            quat[0] = raw_quat[1]  # 左右の傾きを前後の傾きへ
+            quat[1] = -raw_quat[0]  # 前後の傾きを左右の傾きへ
+            quat[2] = raw_quat[2]  # ヨー回転（合っている回転）
+            quat[3] = raw_quat[3]  # W成分
+            
+            if offset == 16:
+                quat[0] = 0.0
+                quat[1] = 0.0
+            
+            mag = torch.norm(quat)
+            if mag > 1e-6:
+                quat = quat / mag
+            else:
+                quat = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self._device, dtype=torch.float32)
+                
+            if offset == 16:
+                self._latest_hmd_pos = pos.clone()
+                self._latest_hmd_quat = quat.clone()
+                
             # 速度計算
             if obj_id in self._prev_vrhand_pos:
                 prev_pos = self._prev_vrhand_pos[obj_id]
@@ -1218,7 +1217,7 @@ class AMPEnv(deepmimic_env.DeepMimicEnv):
         super()._reset_envs(env_ids)
         if len(env_ids) > 0:
             self._reset_disc_hist(env_ids)
-            self._reset_location_task(env_ids)
+            #self._reset_location_task(env_ids)
         return
         
 
