@@ -3,7 +3,7 @@ Run physical AI trained with Mimickit inside Virt-A-Mate (VaM) . Interact with t
 
 ⚠️ **Disclaimer:** This is an unofficial community project. It is not affiliated with, associated with, or endorsed by Mimickit or MeshedVR.
 
-📺 **DEMO:** [https://www.youtube.com/watch?v=M52y7mD9vUA]
+📺 **DEMO:** [https://www.youtube.com/watch?v=M52y7mD9vUA]  
 Latest [https://www.youtube.com/shorts/4PbC7ev-pCU]
 
 ---
